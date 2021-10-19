@@ -42,7 +42,7 @@ entity hd44780_driver is
         o_rs      : out std_logic;                              --! Register Select signal
         o_data    : out std_logic_vector(7 downto 0);           --! Data output signal
         i_data    : in  std_logic_vector(7 downto 0);           --! Data input signal
-        t_data    : out std_logic                               --! Data tristate signal
+        t_data    : out std_logic_vector(7 downto 0)            --! Data tristate signal
     );
 end hd44780_driver;
 
@@ -64,7 +64,8 @@ architecture rtl of hd44780_driver is
     signal data_in_r3 : std_logic_vector(7 downto 0);      --! Syncronizing registers
     signal data_in    : std_logic_vector(7 downto 0);      --! Internal signals for data port
     signal data_out   : std_logic_vector(7 downto 0);      --! Internal signals for data port
-    signal data_tri   : std_logic;                         --! Internal signals for data port
+    signal data_tri   : std_logic_vector(7 downto 0);      --! Internal signals for data port
+    signal disp_ready : std_logic; --! Buffer signal for busy flag of lcd display
 
     signal cnt        : unsigned(15 downto 0);          --! Counter signal to generate enable cycle
     signal cnt_en     : std_logic;                      --! Counter signal to generate enable cycle
@@ -126,24 +127,26 @@ begin
 
                 case drv_state is
                     when init =>
-                        busy      <= '1';
-                        en        <= '0';
-                        data_tri  <= '1';
-                        cnt_start <= '1';
+                        busy       <= '1';
+                        en         <= '0';
+                        data_tri   <= x"FF";
+                        disp_ready <= '0';
+                        cnt_start  <= '1';
 
                         drv_state <= get_busy_flag;
 
                     when idle =>
                         if i_start = '1' then
-                            busy <= '1';
-                            cnt_start <= '1';
-                            drv_state <= set_data;
+                            busy       <= '1';
+                            cnt_start  <= '1';
+                            disp_ready <= '0';
+                            drv_state  <= set_data;
                         end if;
 
                     when set_data =>
                         rw       <= i_disp_rw;
                         rs       <= i_disp_rs;
-                        data_tri <= '0';
+                        data_tri <= x"00";
                         data_out <= i_disp_data;
 
                         if cnt_zero_pulse = '1' then
@@ -162,18 +165,21 @@ begin
                     when get_busy_flag =>
                         rw       <= '1';
                         rs       <= '0';
-                        data_tri <= '1';
+                        data_tri <= x"FF";
                         
                         if cnt_zero_pulse = '1' then
                             en <= '1';
                         end if;
                         
                         if cnt_two_pulse = '1' then
+                            if data_in_r3(7) = '0' then
+                                disp_ready <= '1';
+                            end if;
                             en <= '0';
                         end if;
 
                         if cnt_four_pulse = '1' then
-                            if data_in_r3(7) = '0' then
+                            if disp_ready = '1' then
                                 busy <= '0';
                                 drv_state <= idle;
                             else
